@@ -225,9 +225,10 @@ if __name__ == "__main__":
 
     # Запуск через вебхуки
     port = int(os.environ.get("PORT", 10000))
+    webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_BOT_TOKEN}"
     app.run_webhook(
         listen="0.0.0.0",
         port=port,
         url_path=TELEGRAM_BOT_TOKEN,
-        webhook_url=f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_BOT_TOKEN}"
+        webhook_url=webhook_url
     )
