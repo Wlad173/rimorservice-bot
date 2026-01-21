@@ -2,13 +2,13 @@
 import os
 import logging
 import json
-from telegram import Update, ReplyKeyboardMarkup
+from telegram import Update
 from telegram.ext import (
-    Application,
+    Updater,
     CommandHandler,
     MessageHandler,
-    ContextTypes,
-    filters
+    Filters,
+    CallbackContext
 )
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -65,35 +65,35 @@ CITIES = ["Владивосток", "Находка", "Артём", "Уссур�
 user_state = {}
 
 # === ОБРАБОТЧИКИ ===
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text(
         "👋 Привет! Я бот *PrimorService* — ваш агент по услугам во Владивостоке и Приморье!\n\n"
         "Выберите действие:",
         parse_mode="Markdown",
         reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
     )
 
-async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+def handle_message(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
     text = update.message.text
 
     if text == "🔍 Найти услугу":
-        await show_categories_page_1(update, context)
+        show_categories_page_1(update, context)
         user_state[user_id] = "choosing_service"
 
     elif text == "💼 Стать исполнителем":
         buttons = [[city] for city in CITIES]
-        await update.message.reply_text(
+        update.message.reply_text(
             "Выберите ваш город:",
             reply_markup=ReplyKeyboardMarkup(buttons, resize_keyboard=True)
         )
         user_state[user_id] = "choosing_city"
 
     elif text == "📞 Поддержка":
-        await update.message.reply_text("Напишите нам: @dvsferra_support")
+        update.message.reply_text("Напишите нам: @dvsferra_support")
 
     elif text == "🎟️ Афиша Приморья":
-        await update.message.reply_text(
+        update.message.reply_text(
             "🎉 *Афиша Приморья*\n\n"
             "🔥 Горячие предложения:\n"
             "• Эвакуатор — от 1 500 ₽ (Владивосток)\n"
@@ -104,20 +104,20 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
     elif text == "➡️ 2/4":
-        await show_categories_page_2(update, context)
+        show_categories_page_2(update, context)
     elif text == "⬅️ 1/4":
-        await show_categories_page_1(update, context)
+        show_categories_page_1(update, context)
     elif text == "➡️ 3/4":
-        await update.message.reply_text("📌 Пока доступны только 2 страницы. Добавлю больше в следующем обновлении!")
+        update.message.reply_text("📌 Пока доступны только 2 страницы. Добавлю больше в следующем обновлении!")
     elif text == "⬅️ 2/4":
-        await show_categories_page_1(update, context)
+        show_categories_page_1(update, context)
 
     elif text == "➕ Нет нужного? - Добавьте":
-        await update.message.reply_text("📩 Укажите, какую услугу вы хотите добавить — мы рассмотрим её и включим в список!")
+        update.message.reply_text("📩 Укажите, какую услугу вы хотите добавить — мы рассмотрим её и включим в список!")
         user_state[user_id] = "adding_service"
 
     elif text == "🐾 Животные":
-        await update.message.reply_text(
+        update.message.reply_text(
             "Выберите конкретную услугу для животных:",
             reply_markup=ReplyKeyboardMarkup(PET_SUBCATEGORIES, resize_keyboard=True)
         )
@@ -134,26 +134,26 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🤝 Давайте сделаем сервис лучше! Если вы знаете человека, который выполняет эту услугу, отправьте ему ссылку на бота (нажмите на имя бота вверху — ссылка скопируется).\n\n"
                 "🛠️ Если вы сами оказываете данную услугу, нажмите 'Стать исполнителем' в Главном Меню."
             )
-            await update.message.reply_text(
+            update.message.reply_text(
                 message,
                 reply_markup=ReplyKeyboardMarkup([["⬅️ Назад", "🏠 Главное меню"]], resize_keyboard=True)
             )
         else:
-            await update.message.reply_text(f"Вы выбрали: *{service}*\n\nНапишите подробности (адрес, дата, пожелания):", parse_mode="Markdown")
+            update.message.reply_text(f"Вы выбрали: *{service}*\n\nНапишите подробности (адрес, дата, пожелания):", parse_mode="Markdown")
             user_state[user_id] = "entering_details"
 
     elif text == "⬅️ Назад" and user_state.get(user_id) == "choosing_pet_service":
-        await show_categories_page_1(update, context)
+        show_categories_page_1(update, context)
         user_state[user_id] = "choosing_service"
 
     elif user_state.get(user_id) == "choosing_city" and text in CITIES:
         context.user_data["city"] = text
-        await update.message.reply_text(f"Город: *{text}*\n\nВведите ваше имя или название компании:", parse_mode="Markdown")
+        update.message.reply_text(f"Город: *{text}*\n\nВведите ваше имя или название компании:", parse_mode="Markdown")
         user_state[user_id] = "entering_name"
 
     elif user_state.get(user_id) == "entering_name":
         context.user_data["name"] = text
-        await update.message.reply_text(
+        update.message.reply_text(
             f"✅ Спасибо, {text}! Вы зарегистрированы как исполнитель в городе {context.user_data['city']}.\n\n"
             "Ваш профиль добавлен в DVSфера. Мы свяжемся с вами для подтверждения.",
             reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
@@ -164,7 +164,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.error(f"Ошибка записи в таблицу: {e}")
         if OPERATOR_CHAT_ID:
-            await context.bot.send_message(
+            context.bot.send_message(
                 chat_id=OPERATOR_CHAT_ID,
                 text=f"🆕 Новый исполнитель!\nИмя: {text}\nГород: {context.user_data['city']}\nID: {user_id}"
             )
@@ -180,11 +180,11 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.error(f"Ошибка записи в таблицу: {e}")
         if OPERATOR_CHAT_ID:
-            await context.bot.send_message(
+            context.bot.send_message(
                 chat_id=OPERATOR_CHAT_ID,
                 text=f"📥 Новая заявка!\nУслуга: {service}\nДетали: {details}\nКлиент: @{user.username or '—'} (ID: {user_id})"
             )
-        await update.message.reply_text(
+        update.message.reply_text(
             "✅ Ваша заявка принята! Мы свяжемся с вами в ближайшее время.",
             reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
         )
@@ -193,42 +193,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif user_state.get(user_id) == "adding_service":
         new_service = text
         if OPERATOR_CHAT_ID:
-            await context.bot.send_message(
+            context.bot.send_message(
                 chat_id=OPERATOR_CHAT_ID,
                 text=f"📌 Запрос на добавление услуги:\n{new_service}\nОт пользователя: @{update.effective_user.username or '—'} (ID: {user_id})"
             )
-        await update.message.reply_text(
+        update.message.reply_text(
             "✅ Ваш запрос передан оператору. Если услуга будет добавлена — вы получите уведомление!",
             reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
         )
         user_state.pop(user_id, None)
 
     else:
-        await update.message.reply_text("Пожалуйста, используйте кнопки меню.")
+        update.message.reply_text("Пожалуйста, используйте кнопки меню.")
 
-async def show_categories_page_1(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def show_categories_page_1(update: Update, context: CallbackContext):
+    update.message.reply_text(
         "Выберите категорию услуг (1/4):",
         reply_markup=ReplyKeyboardMarkup(CATEGORIES_PAGE_1, resize_keyboard=True)
     )
 
-async def show_categories_page_2(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
+def show_categories_page_2(update: Update, context: CallbackContext):
+    update.message.reply_text(
         "Выберите категорию услуг (2/4):",
         reply_markup=ReplyKeyboardMarkup(CATEGORIES_PAGE_2, resize_keyboard=True)
     )
 
 # === ЗАПУСК ===
-if __name__ == "__main__":
-    from telegram.ext import Updater
+def main():
+    updater = Updater(TELEGRAM_BOT_TOKEN, use_context=True)
+    dp = updater.dispatcher
 
-    # Создаём Application для обработчиков
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
+    dp.add_handler(CommandHandler("start", start))
+    dp.add_handler(MessageHandler(Filters.text & ~Filters.command, handle_message))
 
-    # Используем Updater для вебхука (работает в 20.6)
-    updater = Updater(bot=app.bot, update_queue=app.update_queue)
     port = int(os.environ.get("PORT", 10000))
     webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_BOT_TOKEN}"
 
@@ -239,3 +236,6 @@ if __name__ == "__main__":
         webhook_url=webhook_url
     )
     updater.idle()
+
+if __name__ == "__main__":
+    main()
