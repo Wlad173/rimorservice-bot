@@ -1,6 +1,7 @@
 # bot.py
 import os
 import logging
+import json
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -22,7 +23,7 @@ logging.basicConfig(level=logging.INFO)
 # === GOOGLE SHEETS ===
 def get_sheet():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds_dict = eval(GOOGLE_CREDENTIALS_JSON)
+    creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     sheet = client.open("DVSferra_Заявки").sheet1
