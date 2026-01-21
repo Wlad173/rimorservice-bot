@@ -220,15 +220,22 @@ async def show_categories_page_2(update: Update, context: ContextTypes.DEFAULT_T
 
 # === ЗАПУСК ===
 if __name__ == "__main__":
-    app = Application.builder().token(TELEGRAM_BOT_TOKEN).updater(None).build()
+    from telegram.ext import Updater
+
+    # Создаём Application для обработчиков
+    app = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
+    # Используем Updater для вебхука (работает в 20.6)
+    updater = Updater(bot=app.bot, update_queue=app.update_queue)
     port = int(os.environ.get("PORT", 10000))
     webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_BOT_TOKEN}"
-    app.run_webhook(
+
+    updater.start_webhook(
         listen="0.0.0.0",
         port=port,
         url_path=TELEGRAM_BOT_TOKEN,
         webhook_url=webhook_url
     )
+    updater.idle()
