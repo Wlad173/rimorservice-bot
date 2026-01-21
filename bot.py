@@ -223,7 +223,7 @@ if __name__ == "__main__":
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    # Запуск через вебхуки
+    # Запуск через вебхуки (обязательно для Render.com)
     port = int(os.environ.get("PORT", 10000))
     webhook_url = f"https://{os.environ.get('RENDER_EXTERNAL_HOSTNAME')}/{TELEGRAM_BOT_TOKEN}"
     app.run_webhook(
