@@ -1,7 +1,8 @@
-# bot.py — DVSфера Telegram Bot (финальная версия)
+# bot.py — DVSфера Telegram Bot (финальная версия с афишей)
 import os
 import logging
 import json
+import datetime
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import (
     Updater,
@@ -21,12 +22,12 @@ GOOGLE_CREDENTIALS_JSON = os.getenv("GOOGLE_CREDENTIALS_JSON")
 logging.basicConfig(level=logging.INFO)
 
 # === GOOGLE SHEETS ===
-def get_sheet():
+def get_sheet(name="DVSferra_Заявки"):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds_dict = json.loads(GOOGLE_CREDENTIALS_JSON)
     creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
-    sheet = client.open("DVSferra_Заявки").sheet1
+    sheet = client.open(name).sheet1
     return sheet
 
 # === ГОРОДА ПРИМОРЬЯ ===
@@ -40,8 +41,13 @@ def paginate(items, page_size=6):
 
 CITY_PAGES = paginate(CITIES)
 
-# === ОСНОВНЫЕ КАТЕГОРИИ (все на одном экране) ===
-MAIN_CATEGORIES = [
+# === КНОПКИ ===
+MAIN_MENU = [
+    ["🔍 Найти услугу", "💼 Стать исполнителем"],
+    ["🎟️ Афиша Приморья", "📞 Поддержка"]
+]
+
+SERVICE_CATEGORIES = [
     ["👶 Детские услуги", "💻 Для Бизнеса/IT"],
     ["🍔 Еда/Продукты", "🐾 Животные"],
     ["🧼 Клининг/Химчистка", "🛋️ Мебель"],
@@ -50,15 +56,20 @@ MAIN_CATEGORIES = [
     ["⚖️ Адвокаты/Юристы", "🔑 Аренда/Прокат"],
     ["✂️ Ателье/Швея", "🔧 Быт.услуги/Ремонт"],
     ["🛍️ Бьюти Сфера", "🚚 Грузоперевозки"],
-    ["⬅️ Назад", "🏠 Главное меню"]
+    ["➕ Другое", "🏠 Главное меню"]
 ]
 
-MAIN_MENU = [
-    ["🔍 Найти услугу", "💼 Стать исполнителем"],
-    ["🎟️ Афиша Приморья", "📞 Поддержка"]
+AFISHA_MENU = [
+    ["🗓️ Выбрать дату", "⭐ На 2 недели"],
+    ["🎭 Театр/Кино", "🎵 Концерты"],
+    ["🖼️ Выставки", "🎲 Игры/Конкурсы"],
+    ["🎉 Фестивали", "👶 Для детей"],
+    ["🧑‍🏫 Мастер-классы", "🏃 Активный отдых"],
+    ["💃 Вечеринки", "😊 Другое"],
+    ["➕ Добавить событие", "🏠 Главное меню"]
 ]
 
-# === ОБРАБОТЧИКИ ===
+# === ФУНКЦИИ ===
 def start(update: Update, context: CallbackContext):
     context.user_data.clear()
     update.message.reply_text(
@@ -89,6 +100,31 @@ def show_city_page(update: Update, context: CallbackContext, page=0, for_search=
     context.user_data["city_page"] = page
     context.user_data["for_search"] = for_search
 
+def show_events(update: Update, events):
+    if not events:
+        update.message.reply_text("❌ Пока нет событий.")
+        return
+    
+    message = "📅 *Ближайшие мероприятия:*\n\n"
+    for event in events[:5]:
+        message += f"📍 {event.get('Место', '—')}\n"
+        message += f"🗓️ {event.get('Дата', '—')}\n"
+        message += f"🎫 {event.get('Название', '—')}\n"
+        link = event.get('Ссылка', '')
+        if link:
+            message += f"🔗 {link}\n"
+        desc = event.get('Описание', '')
+        if desc:
+            message += f"📝 {desc}\n"
+        message += "\n"
+    
+    update.message.reply_text(
+        message,
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardMarkup([["⬅️ Назад", "🏠 Главное меню"]], resize_keyboard=True)
+    )
+
+# === ОБРАБОТЧИКИ ===
 def handle_message(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
     text = update.message.text
@@ -109,19 +145,120 @@ def handle_message(update: Update, context: CallbackContext):
     elif text == "🎟️ Афиша Приморья":
         update.message.reply_text(
             "🎉 *Афиша Приморья*\n\n"
-            "🔥 Горячие предложения:\n"
-            "• Эвакуатор — от 1 500 ₽ (Владивосток)\n"
-            "• Мини-экскаватор — 2 000 ₽/час\n"
-            "• Доставка авто из Японии — скидка 5% при заказе через бота\n\n"
-            "Следите за обновлениями в @jpcn_auto!",
-            parse_mode="Markdown"
+            "📌 Здесь мы собираем самые яркие и значимые события Приморья. "
+            "Афиша поможет вам планировать отдых и выходные!\n\n"
+            "🔎 Поиск удобно распределен: по календарю, по ближайшим 2 неделям, по типам событий. "
+            "Будьте в курсе событий всего за 3 клика!\n\n"
+            "💡 Кроме того, вы сами можете добавить любое событие через кнопку в меню «Добавить событие»!",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardMarkup(AFISHA_MENU, resize_keyboard=True)
         )
+        context.user_data["state"] = "choosing_afisha_category"
 
     elif text == "🏠 Главное меню":
         start(update, context)
         return
 
-    # === Навигация по городам ===
+    # === АФИША ===
+    elif state == "choosing_afisha_category":
+        if text == "➕ Добавить событие":
+            update.message.reply_text("📝 Укажите название события:")
+            context.user_data["state"] = "entering_event_name"
+
+        elif text == "🗓️ Выбрать дату":
+            update.message.reply_text("📅 Укажите дату (формат: ГГГГ-ММ-ДД):")
+            context.user_data["state"] = "entering_event_date_filter"
+
+        elif text == "⭐ На 2 недели":
+            try:
+                events = get_sheet("DVSferra_Афиша").get_all_records()
+                today = datetime.date.today()
+                two_weeks = today + datetime.timedelta(days=14)
+                filtered = [
+                    e for e in events
+                    if e.get("Дата") and today <= datetime.datetime.strptime(e["Дата"], "%Y-%m-%d").date() <= two_weeks
+                ]
+                show_events(update, filtered)
+            except Exception as e:
+                logging.error(f"Ошибка загрузки афиши: {e}")
+                update.message.reply_text("❌ Не удалось загрузить афишу.")
+
+        else:
+            # Фильтр по категории
+            try:
+                events = get_sheet("DVSferra_Афиша").get_all_records()
+                filtered = [e for e in events if e.get("Категория") == text]
+                show_events(update, filtered)
+            except Exception as e:
+                logging.error(f"Ошибка загрузки афиши: {e}")
+                update.message.reply_text("❌ Не удалось загрузить афишу.")
+
+    # === ФИЛЬТР ПО ДАТЕ ===
+    elif state == "entering_event_date_filter":
+        try:
+            target_date = datetime.datetime.strptime(text, "%Y-%m-%d").date()
+            events = get_sheet("DVSferra_Афиша").get_all_records()
+            filtered = [e for e in events if e.get("Дата") == str(target_date)]
+            show_events(update, filtered)
+        except ValueError:
+            update.message.reply_text("❌ Неверный формат даты. Используйте ГГГГ-ММ-ДД.")
+        context.user_data["state"] = "afisha_browsing"
+
+    # === ДОБАВЛЕНИЕ СОБЫТИЯ ===
+    elif state == "entering_event_name":
+        context.user_data["event_name"] = text
+        update.message.reply_text("📅 Укажите дату (формат: ГГГГ-ММ-ДД):")
+        context.user_data["state"] = "entering_event_date"
+
+    elif state == "entering_event_date":
+        context.user_data["event_date"] = text
+        update.message.reply_text("📍 Укажите место проведения:")
+        context.user_data["state"] = "entering_event_place"
+
+    elif state == "entering_event_place":
+        context.user_data["event_place"] = text
+        update.message.reply_text("📝 Укажите описание события:")
+        context.user_data["state"] = "entering_event_description"
+
+    elif state == "entering_event_description":
+        context.user_data["event_description"] = text
+        update.message.reply_text("🔗 Укажите ссылку на событие:")
+        context.user_data["state"] = "entering_event_link"
+
+    elif state == "entering_event_link":
+        context.user_data["event_link"] = text
+        update.message.reply_text("🏷️ Укажите категорию (например: Концерты, Театр/Кино и т.д.):")
+        context.user_data["state"] = "entering_event_category"
+
+    elif state == "entering_event_category":
+        category = text
+        name = context.user_data["event_name"]
+        date = context.user_data["event_date"]
+        place = context.user_data["event_place"]
+        desc = context.user_data["event_description"]
+        link = context.user_data["event_link"]
+
+        try:
+            sheet = get_sheet("DVSferra_Афиша")
+            sheet.append_row([name, date, place, desc, link, category])
+        except Exception as e:
+            logging.error(f"Ошибка записи события: {e}")
+            update.message.reply_text("❌ Ошибка при сохранении события. Попробуйте позже.")
+            return
+
+        if OPERATOR_CHAT_ID:
+            context.bot.send_message(
+                chat_id=OPERATOR_CHAT_ID,
+                text=f"🆕 Новое событие добавлено!\nНазвание: {name}\nДата: {date}\nМесто: {place}\nКатегория: {category}\nСсылка: {link}"
+            )
+
+        update.message.reply_text(
+            "✅ Событие успешно добавлено! Оператор проверит его и опубликует.",
+            reply_markup=ReplyKeyboardMarkup([["🏠 Главное меню"]], resize_keyboard=True)
+        )
+        context.user_data.clear()
+
+    # === РЕГИСТРАЦИЯ ИСПОЛНИТЕЛЯ ===
     elif state in ("choosing_city_for_search", "choosing_city_for_reg"):
         page = context.user_data.get("city_page", 0)
         for_search = context.user_data.get("for_search", True)
@@ -138,65 +275,62 @@ def handle_message(update: Update, context: CallbackContext):
                 update.message.reply_text(
                     f"Город: *{text}*\nВыберите категорию:",
                     parse_mode="Markdown",
-                    reply_markup=ReplyKeyboardMarkup(MAIN_CATEGORIES, resize_keyboard=True)
+                    reply_markup=ReplyKeyboardMarkup(SERVICE_CATEGORIES, resize_keyboard=True)
                 )
-                context.user_data["state"] = "choosing_category"
+                context.user_data["state"] = "choosing_service"
             else:
                 update.message.reply_text(
-                    f"Город: *{text}*\nВведите ваше имя или название компании:",
-                    parse_mode="Markdown"
+                    f"Город: *{text}*\nВыберите сферу услуг:",
+                    parse_mode="Markdown",
+                    reply_markup=ReplyKeyboardMarkup(SERVICE_CATEGORIES, resize_keyboard=True)
                 )
-                context.user_data["state"] = "entering_name"
+                context.user_data["state"] = "choosing_service"
 
-    # === Выбор категории ===
-    elif state == "choosing_category":
-        if text == "⬅️ Назад":
-            show_city_page(update, context, context.user_data.get("city_page", 0), for_search=True)
-            context.user_data["state"] = "choosing_city_for_search"
-        elif text == "🏠 Главное меню":
-            start(update, context)
-        else:
-            update.message.reply_text(
-                f"❌ В городе {context.user_data['selected_city']} пока нет исполнителей в категории:\n*{text}*",
-                parse_mode="Markdown",
-                reply_markup=ReplyKeyboardMarkup([["⬅️ Назад", "🏠 Главное меню"]], resize_keyboard=True)
-            )
+    elif state == "choosing_service":
+        if text == "➕ Другое":
+            update.message.reply_text("Укажите сферу услуг:")
+            context.user_data["state"] = "entering_custom_service"
+        elif text in [cat for row in SERVICE_CATEGORIES for cat in row]:
+            context.user_data["service"] = text
+            update.message.reply_text("Введите название компании или ваше имя:")
+            context.user_data["state"] = "entering_name"
 
-    # === Регистрация имени ===
+    elif state == "entering_custom_service":
+        context.user_data["service"] = text
+        update.message.reply_text("Введите название компании или ваше имя:")
+        context.user_data["state"] = "entering_name"
+
     elif state == "entering_name":
-        name = text
+        context.user_data["name"] = text
+        update.message.reply_text("Введите контактные данные (телефон, Telegram, email):")
+        context.user_data["state"] = "entering_contact"
+
+    elif state == "entering_contact":
+        contact = text
         city = context.user_data["selected_city"]
+        service = context.user_data["service"]
+        name = context.user_data["name"]
         try:
-            sheet = get_sheet()
-            sheet.append_row(["Исполнитель", name, city, "", user_id, str(update.effective_user)])
+            sheet = get_sheet("DVSferra_Заявки")
+            sheet.append_row([
+                "Исполнитель",
+                name,
+                city,
+                service,
+                user_id,
+                str(update.effective_user),
+                contact
+            ])
         except Exception as e:
             logging.error(f"Ошибка записи в таблицу: {e}")
         if OPERATOR_CHAT_ID:
             context.bot.send_message(
                 chat_id=OPERATOR_CHAT_ID,
-                text=f"🆕 Новый исполнитель!\nИмя: {name}\nГород: {city}\nID: {user_id}"
+                text=f"🆕 Новый исполнитель!\nИмя: {name}\nГород: {city}\nСфера: {service}\nКонтакты: {contact}\nID: {user_id}"
             )
         update.message.reply_text(
             f"✅ Спасибо, {name}! Вы зарегистрированы в городе {city}.",
             reply_markup=ReplyKeyboardMarkup([["🏠 Главное меню"]], resize_keyboard=True)
-        )
-        context.user_data.clear()
-
-    # === Запрос на добавление услуги ===
-    elif text == "➕ Нет нужного? - Добавьте":
-        update.message.reply_text("📩 Укажите, какую услугу вы хотите добавить — мы рассмотрим её и включим в список!")
-        context.user_data["state"] = "adding_service"
-
-    elif state == "adding_service":
-        new_service = text
-        if OPERATOR_CHAT_ID:
-            context.bot.send_message(
-                chat_id=OPERATOR_CHAT_ID,
-                text=f"📌 Запрос на добавление услуги:\n{new_service}\nОт пользователя: @{update.effective_user.username or '—'} (ID: {user_id})"
-            )
-        update.message.reply_text(
-            "✅ Ваш запрос передан оператору. Если услуга будет добавлена — вы получите уведомление!",
-            reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
         )
         context.user_data.clear()
 
