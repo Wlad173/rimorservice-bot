@@ -69,7 +69,7 @@ def start(update: Update, context: CallbackContext):
     update.message.reply_text(
         "👋 Привет! Я бот *PrimorService* — ваш агент по услугам во Владивостоке и Приморье!\n\n"
         "Выберите действие:",
-        parse_mode="Markdown",
+        parse_mode="MarkdownV2",
         reply_markup=ReplyKeyboardMarkup(MAIN_MENU, resize_keyboard=True)
     )
 
