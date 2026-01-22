@@ -1,4 +1,4 @@
-# bot.py — DVSфера Telegram Bot (финальная версия с афишей)
+# bot.py — DVSфера Telegram Bot (финальная версия)
 import os
 import logging
 import json
@@ -56,7 +56,7 @@ SERVICE_CATEGORIES = [
     ["⚖️ Адвокаты/Юристы", "🔑 Аренда/Прокат"],
     ["✂️ Ателье/Швея", "🔧 Быт.услуги/Ремонт"],
     ["🛍️ Бьюти Сфера", "🚚 Грузоперевозки"],
-    ["➕ Другое", "🏠 Главное меню"]
+    ["⬅️ Назад", "🏠 Главное меню"]
 ]
 
 AFISHA_MENU = [
@@ -66,7 +66,7 @@ AFISHA_MENU = [
     ["🎉 Фестивали", "👶 Для детей"],
     ["🧑‍🏫 Мастер-классы", "🏃 Активный отдых"],
     ["💃 Вечеринки", "😊 Другое"],
-    ["➕ Добавить событие", "🏠 Главное меню"]
+    ["➕ Добавить событие", "⬅️ Назад"]
 ]
 
 # === ФУНКЦИИ ===
@@ -124,6 +124,20 @@ def show_events(update: Update, events):
         reply_markup=ReplyKeyboardMarkup([["⬅️ Назад", "🏠 Главное меню"]], resize_keyboard=True)
     )
 
+def show_no_providers_message(update: Update, context: CallbackContext, service: str):
+    """Показывает сообщение, если нет исполнителей"""
+    city = context.user_data.get("selected_city", "этом городе")
+    message = (
+        f"❌ В {city} пока нет исполнителей в категории:\n*{service}*\n\n"
+        "💡 Хотите добавить себя как исполнителя?\n"
+        "Нажмите «💼 Стать исполнителем» в главном меню."
+    )
+    update.message.reply_text(
+        message,
+        parse_mode="Markdown",
+        reply_markup=ReplyKeyboardMarkup([["⬅️ Назад", "🏠 Главное меню"]], resize_keyboard=True)
+    )
+
 # === ОБРАБОТЧИКИ ===
 def handle_message(update: Update, context: CallbackContext):
     user_id = update.effective_user.id
@@ -145,11 +159,8 @@ def handle_message(update: Update, context: CallbackContext):
     elif text == "🎟️ Афиша Приморья":
         update.message.reply_text(
             "🎉 *Афиша Приморья*\n\n"
-            "📌 Здесь мы собираем самые яркие и значимые события Приморья. "
-            "Афиша поможет вам планировать отдых и выходные!\n\n"
-            "🔎 Поиск удобно распределен: по календарю, по ближайшим 2 неделям, по типам событий. "
-            "Будьте в курсе событий всего за 3 клика!\n\n"
-            "💡 Кроме того, вы сами можете добавить любое событие через кнопку в меню «Добавить событие»!",
+            "📌 Здесь мы собираем самые яркие и значимые события Приморья.\n\n"
+            "🔎 Выберите категорию или дату:",
             parse_mode="Markdown",
             reply_markup=ReplyKeyboardMarkup(AFISHA_MENU, resize_keyboard=True)
         )
@@ -161,7 +172,11 @@ def handle_message(update: Update, context: CallbackContext):
 
     # === АФИША ===
     elif state == "choosing_afisha_category":
-        if text == "➕ Добавить событие":
+        if text == "⬅️ Назад":
+            start(update, context)
+            return
+
+        elif text == "➕ Добавить событие":
             update.message.reply_text("📝 Укажите название события:")
             context.user_data["state"] = "entering_event_name"
 
@@ -174,10 +189,14 @@ def handle_message(update: Update, context: CallbackContext):
                 events = get_sheet("DVSferra_Афиша").get_all_records()
                 today = datetime.date.today()
                 two_weeks = today + datetime.timedelta(days=14)
-                filtered = [
-                    e for e in events
-                    if e.get("Дата") and today <= datetime.datetime.strptime(e["Дата"], "%Y-%m-%d").date() <= two_weeks
-                ]
+                filtered = []
+                for e in events:
+                    try:
+                        event_date = datetime.datetime.strptime(e.get("Дата", ""), "%Y-%m-%d").date()
+                        if today <= event_date <= two_weeks:
+                            filtered.append(e)
+                    except ValueError:
+                        continue
                 show_events(update, filtered)
             except Exception as e:
                 logging.error(f"Ошибка загрузки афиши: {e}")
@@ -198,7 +217,14 @@ def handle_message(update: Update, context: CallbackContext):
         try:
             target_date = datetime.datetime.strptime(text, "%Y-%m-%d").date()
             events = get_sheet("DVSferra_Афиша").get_all_records()
-            filtered = [e for e in events if e.get("Дата") == str(target_date)]
+            filtered = []
+            for e in events:
+                try:
+                    event_date = datetime.datetime.strptime(e.get("Дата", ""), "%Y-%m-%d").date()
+                    if event_date == target_date:
+                        filtered.append(e)
+                except ValueError:
+                    continue
             show_events(update, filtered)
         except ValueError:
             update.message.reply_text("❌ Неверный формат даты. Используйте ГГГГ-ММ-ДД.")
@@ -253,7 +279,7 @@ def handle_message(update: Update, context: CallbackContext):
             )
 
         update.message.reply_text(
-            "✅ Событие успешно добавлено! Оператор проверит его и опубликует.",
+            "✅ Событие успешно добавлено!",
             reply_markup=ReplyKeyboardMarkup([["🏠 Главное меню"]], resize_keyboard=True)
         )
         context.user_data.clear()
@@ -266,6 +292,9 @@ def handle_message(update: Update, context: CallbackContext):
         if text == "⬅️ Назад":
             if page > 0:
                 show_city_page(update, context, page - 1, for_search)
+            else:
+                start(update, context)
+                return
         elif text == "➡️ Вперёд":
             if page < len(CITY_PAGES) - 1:
                 show_city_page(update, context, page + 1, for_search)
@@ -287,13 +316,33 @@ def handle_message(update: Update, context: CallbackContext):
                 context.user_data["state"] = "choosing_service"
 
     elif state == "choosing_service":
-        if text == "➕ Другое":
+        if text == "⬅️ Назад":
+            show_city_page(update, context, context.user_data.get("city_page", 0), for_search=context.user_data.get("for_search", True))
+            context.user_data["state"] = "choosing_city_for_search" if context.user_data.get("for_search") else "choosing_city_for_reg"
+        elif text == "🏠 Главное меню":
+            start(update, context)
+            return
+        elif text == "➕ Другое":
             update.message.reply_text("Укажите сферу услуг:")
             context.user_data["state"] = "entering_custom_service"
         elif text in [cat for row in SERVICE_CATEGORIES for cat in row]:
             context.user_data["service"] = text
-            update.message.reply_text("Введите название компании или ваше имя:")
-            context.user_data["state"] = "entering_name"
+            # Проверяем, есть ли исполнители
+            try:
+                providers = get_sheet("DVSferra_Заявки").get_all_records()
+                city = context.user_data["selected_city"]
+                matched = [p for p in providers if p.get("Город") == city and p.get("Сфера") == text]
+                if matched:
+                    message = "✅ Найдены исполнители:\n\n"
+                    for p in matched[:3]:
+                        message += f"👤 {p.get('Имя', '—')}\n"
+                        message += f"📞 {p.get('Контакты', '—')}\n\n"
+                    update.message.reply_text(message)
+                else:
+                    show_no_providers_message(update, context, text)
+            except Exception as e:
+                logging.error(f"Ошибка поиска исполнителей: {e}")
+                show_no_providers_message(update, context, text)
 
     elif state == "entering_custom_service":
         context.user_data["service"] = text
@@ -302,7 +351,7 @@ def handle_message(update: Update, context: CallbackContext):
 
     elif state == "entering_name":
         context.user_data["name"] = text
-        update.message.reply_text("Введите контактные данные (телефон, Telegram, email):")
+        update.message.reply_text("Введите контактные данные:\n• Телефон\n• Telegram\n• Email")
         context.user_data["state"] = "entering_contact"
 
     elif state == "entering_contact":
