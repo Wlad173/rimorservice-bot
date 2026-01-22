@@ -1,4 +1,3 @@
-# bot.py
 # bot.py — DVSфера Telegram Bot (финальная версия)
 import os
 import logging
