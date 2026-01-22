@@ -1,4 +1,4 @@
-# bot.py — DVSфера Telegram Bot (исправленная версия)
+# bot.py — DVSфера Telegram Bot (финальная исправленная версия)
 import os
 import logging
 import json
@@ -41,6 +41,19 @@ def paginate(items, page_size=6):
 
 CITY_PAGES = paginate(CITIES)
 
+# === ПЛОСКИЙ СПИСОК КАТЕГОРИЙ (важно!) ===
+ALL_CATEGORIES = [
+    "👶 Детские услуги", "💻 Для Бизнеса/IT",
+    "🍔 Еда/Продукты", "🐾 Животные",
+    "🧼 Клининг/Химчистка", "🛋️ Мебель",
+    "🩺 Медицина/Врачи", "🎓 Обучение/Курсы",
+    "🚗 Авто/мото услуги", "🚌 Автобусы/Область",
+    "⚖️ Адвокаты/Юристы", "🔑 Аренда/Прокат",
+    "✂️ Ателье/Швея", "🔧 Быт.услуги/Ремонт",
+    "🛍️ Бьюти Сфера", "🚚 Грузоперевозки",
+    "➕ Другое"
+]
+
 # === КНОПКИ ===
 MAIN_MENU = [
     ["🔍 Найти услугу", "💼 Стать исполнителем"],
@@ -56,7 +69,7 @@ SERVICE_CATEGORIES = [
     ["⚖️ Адвокаты/Юристы", "🔑 Аренда/Прокат"],
     ["✂️ Ателье/Швея", "🔧 Быт.услуги/Ремонт"],
     ["🛍️ Бьюти Сфера", "🚚 Грузоперевозки"],
-    ["⬅️ Назад", "🏠 Главное меню"]
+    ["➕ Другое", "⬅️ Назад"]
 ]
 
 AFISHA_MENU = [
@@ -311,21 +324,20 @@ def handle_message(update: Update, context: CallbackContext):
         elif text == "➕ Другое":
             update.message.reply_text("Укажите сферу услуг:")
             context.user_data["state"] = "entering_custom_service"
-        elif text in [cat for row in SERVICE_CATEGORIES for cat in row]:
+        elif text in ALL_CATEGORIES:
             context.user_data["service"] = text
+            city = context.user_data["selected_city"]
+            
             # Проверяем, есть ли исполнители
             try:
                 providers = get_sheet("DVSferra_Заявки").get_all_records()
-                city = context.user_data["selected_city"]
                 matched = [p for p in providers if p.get("Город") == city and p.get("Сфера") == text]
                 if matched:
                     message = "✅ Найдены исполнители:\n\n"
                     for p in matched[:3]:
-                        message += f"👤 {p.get('Имя', '—')}\n"
-                        message += f"📞 {p.get('Контакты', '—')}\n\n"
-                    update.message.reply_text(message)
+                        message += f"👤 {p.get('Имя', '—')}\n📞 {p.get('Контакты', '—')}\n\n"
+                    update.message.reply_text(message, reply_markup=ReplyKeyboardMarkup([["🏠 Главное меню"]], resize_keyboard=True))
                 else:
-                    # ❗ Нет исполнителей — сообщаем
                     update.message.reply_text(
                         f"❌ В городе *{city}* пока нет исполнителей в категории:\n*{text}*\n\n"
                         "💡 Хотите стать исполнителем?\n"
@@ -342,6 +354,8 @@ def handle_message(update: Update, context: CallbackContext):
                     parse_mode="Markdown",
                     reply_markup=ReplyKeyboardMarkup([["🏠 Главное меню"]], resize_keyboard=True)
                 )
+        else:
+            update.message.reply_text("Пожалуйста, используйте кнопки.")
 
     elif state == "entering_custom_service":
         context.user_data["service"] = text
